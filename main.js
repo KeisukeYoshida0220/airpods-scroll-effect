@@ -15,31 +15,8 @@ document.addEventListener("DOMContentLoaded", function() {
   let currentIndex = 1;
   const imagesToLoad = [];
 
-  const preloadNextImages = () => {
-    if (currentIndex >= frameCount) {
-      return;
-    }
-
-    for (let i = 0; i < preloadOffset; i++) {
-      const imgIndex = currentIndex + i;
-      if (imgIndex >= frameCount) {
-        break;
-      }
-
-      const img = new Image();
-      img.src = currentFrame(imgIndex);
-      img.onload = () => {
-        loadedCount++;
-        if (loadedCount >= frameCount - 1) {
-          loadedCount = frameCount - 1;
-        }
-      };
-
-      imagesToLoad.push(img);
-    }
-
-    currentIndex += preloadOffset;
-  };
+  let isScrolling = false;
+  let animationFrameId = null;
 
   const img = new Image();
   img.src = currentFrame(1);
@@ -47,18 +24,6 @@ document.addEventListener("DOMContentLoaded", function() {
   canvas.height = 810;
   img.onload = function() {
     context.drawImage(img, 0, 0);
-  };
-
-  let isScrolling = false;
-  const scrollHandler = () => {
-    if (!isScrolling) {
-      window.requestAnimationFrame(() => {
-        updateImage();
-        isScrolling = false;
-      });
-    }
-
-    isScrolling = true;
   };
 
   const updateImage = () => {
@@ -70,24 +35,41 @@ document.addEventListener("DOMContentLoaded", function() {
       Math.ceil(scrollFraction * frameCount)
     );
 
-    if (imagesToLoad.length > 0) {
-      const currentImg = imagesToLoad[0];
-      if (currentImg.complete) {
-        img.src = currentImg.src;
-        context.drawImage(img, 0, 0);
-        imagesToLoad.shift();
+    if (frameIndex !== currentIndex) {
+      const imgIndex = frameIndex + preloadOffset;
+      if (imgIndex < frameCount && !imagesToLoad.some(img => img.index === imgIndex)) {
+        const preloadImg = new Image();
+        preloadImg.index = imgIndex;
+        preloadImg.src = currentFrame(imgIndex);
+        imagesToLoad.push(preloadImg);
+      }
+
+      if (imagesToLoad.length > 0) {
+        const currentImg = imagesToLoad[0];
+        if (currentImg.complete) {
+          img.src = currentImg.src;
+          context.drawImage(img, 0, 0);
+          currentIndex = frameIndex;
+          imagesToLoad.shift();
+        }
       }
     }
 
-    const preloadIndex = frameIndex + preloadOffset;
-    if (preloadIndex < frameCount && !imagesToLoad.some(img => img.src === currentFrame(preloadIndex))) {
-      const preloadImg = new Image();
-      preloadImg.src = currentFrame(preloadIndex);
-      imagesToLoad.push(preloadImg);
+    isScrolling = false;
+  };
+
+  const scrollHandler = () => {
+    if (!isScrolling) {
+      isScrolling = true;
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      animationFrameId = requestAnimationFrame(updateImage);
     }
   };
 
   window.addEventListener("scroll", scrollHandler);
 
-  preloadNextImages();
+  updateImage(); // 初期表示時に画像を更新
+
 }, false);
