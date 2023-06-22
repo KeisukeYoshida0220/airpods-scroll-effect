@@ -5,7 +5,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   const frameCount = 92;
   const frameDelay = 100; // ミリ秒単位の遅延時間
-  const preloadOffset = 6; // 先読みする画像の数
+  const preloadOffset = 10; // 先読みする画像の数
   const currentFrame = index =>
     `https://www.apple.com/105/media/us/airpods-pro/2022/d2deeb8e-83eb-48ea-9721-f567cf0fffa8/anim/hero/small/${index
       .toString()
@@ -15,8 +15,31 @@ document.addEventListener("DOMContentLoaded", function() {
   let currentIndex = 1;
   const imagesToLoad = [];
 
-  let isScrolling = false;
-  let animationFrameId = null;
+  const preloadNextImages = () => {
+    if (currentIndex >= frameCount) {
+      return;
+    }
+
+    for (let i = 0; i < preloadOffset; i++) {
+      const imgIndex = currentIndex + i;
+      if (imgIndex >= frameCount) {
+        break;
+      }
+
+      const img = new Image();
+      img.src = currentFrame(imgIndex);
+      img.onload = () => {
+        loadedCount++;
+        if (loadedCount >= frameCount - 1) {
+          loadedCount = frameCount - 1;
+        }
+      };
+
+      imagesToLoad.push(img);
+    }
+
+    currentIndex += preloadOffset;
+  };
 
   const img = new Image();
   img.src = currentFrame(1);
@@ -26,8 +49,25 @@ document.addEventListener("DOMContentLoaded", function() {
     context.drawImage(img, 0, 0);
   };
 
+  let isScrolling = false;
+  let lastKnownScrollPosition = 0;
+  let ticking = false;
+
+  const scrollHandler = () => {
+    lastKnownScrollPosition = window.scrollY;
+
+    if (!ticking) {
+      window.requestAnimationFrame(() => {
+        updateImage();
+        ticking = false;
+      });
+
+      ticking = true;
+    }
+  };
+
   const updateImage = () => {
-    const scrollTop = html.scrollTop;
+    const scrollTop = lastKnownScrollPosition;
     const maxScrollTop = html.scrollHeight - window.innerHeight;
     const scrollFraction = scrollTop / maxScrollTop;
     const frameIndex = Math.min(
@@ -35,41 +75,24 @@ document.addEventListener("DOMContentLoaded", function() {
       Math.ceil(scrollFraction * frameCount)
     );
 
-    if (frameIndex !== currentIndex) {
-      const imgIndex = frameIndex + preloadOffset;
-      if (imgIndex < frameCount && !imagesToLoad.some(img => img.index === imgIndex)) {
-        const preloadImg = new Image();
-        preloadImg.index = imgIndex;
-        preloadImg.src = currentFrame(imgIndex);
-        imagesToLoad.push(preloadImg);
-      }
-
-      if (imagesToLoad.length > 0) {
-        const currentImg = imagesToLoad[0];
-        if (currentImg.complete) {
-          img.src = currentImg.src;
-          context.drawImage(img, 0, 0);
-          currentIndex = frameIndex;
-          imagesToLoad.shift();
-        }
+    if (imagesToLoad.length > 0) {
+      const currentImg = imagesToLoad[0];
+      if (currentImg.complete) {
+        img.src = currentImg.src;
+        context.drawImage(img, 0, 0);
+        imagesToLoad.shift();
       }
     }
 
-    isScrolling = false;
-  };
-
-  const scrollHandler = () => {
-    if (!isScrolling) {
-      isScrolling = true;
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-      }
-      animationFrameId = requestAnimationFrame(updateImage);
+    const preloadIndex = frameIndex + preloadOffset;
+    if (preloadIndex < frameCount && !imagesToLoad.some(img => img.src === currentFrame(preloadIndex))) {
+      const preloadImg = new Image();
+      preloadImg.src = currentFrame(preloadIndex);
+      imagesToLoad.push(preloadImg);
     }
   };
 
-  window.addEventListener("scroll", scrollHandler);
+  window.addEventListener("scroll", scrollHandler, { passive: true });
 
-  updateImage(); // 初期表示時に画像を更新
-
+  preloadNextImages();
 }, false);
